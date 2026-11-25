@@ -1,0 +1,25 @@
+{
+  "name": "mergewitness",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "chain": "node scripts/studio.mjs",
+    "approval": "node scripts/require-approval.mjs"
+  },
+  "dependencies": {
+    "genlayer-js": "2.0.0-rc.1",
+    "react": "19.1.1",
+    "react-dom": "19.1.1",
+    "viem": "2.38.5"
+  },
+  "devDependencies": {
+    "@types/react": "19.1.16",
+    "@types/react-dom": "19.1.9",
+    "typescript": "5.9.3",
+    "vite": "6.4.1"
+  },
+  "engines": {"node": "24.x"}
+}

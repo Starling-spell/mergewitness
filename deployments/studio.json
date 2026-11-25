@@ -1,0 +1,10 @@
+{
+  "chainId": 61999,
+  "address": "0x9453Cf4D9a20b873dD7d022B96E31D287EDE8b94",
+  "deployer": "0x21e40137238670fF7d4C0B2631760901553380e6",
+  "deploymentTx": "0xa0d72eee7dbb2fc793e00b6789b576f365961f51cc85be149efb63a6a920382f",
+  "policyTx": "0x15bbc69076a44745417cb2fea8a946f327950ac776a9604a1c2d912dcd7bf84b",
+  "approvalTx": "",
+  "wrongWorkflowTx": "",
+  "sourceSha256": "ab7817226ec44618aaf27e4cc171bf23689f8d6a931afb5c4afdd434eb2082b7"
+}

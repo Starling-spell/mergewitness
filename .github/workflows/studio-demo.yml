@@ -1,0 +1,31 @@
+name: Record Studio demo
+on: workflow_dispatch
+permissions:
+  contents: read
+concurrency:
+  group: mergewitness-studio-demo
+  cancel-in-progress: false
+jobs:
+  demo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Resume the published test deployment
+        run: |
+          mkdir -p .studio-state
+          node --input-type=module -e "import fs from 'node:fs'; const m=JSON.parse(fs.readFileSync('deployments/studio.json','utf8')); if (!m.wrongWorkflowTx) delete m.wrongWorkflowTx; if (!m.approvalTx) delete m.approvalTx; fs.writeFileSync('.studio-state/studio-run.json',JSON.stringify(m))"
+          npm run chain -- --resume
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: studio-evidence
+          path: |
+            .studio-state/studio-run.json
+            deployments/studio.json
+          include-hidden-files: true
