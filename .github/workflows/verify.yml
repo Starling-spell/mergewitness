@@ -18,4 +18,16 @@ jobs:
       - run: npm run build
       - run: pip install -r requirements.txt
       - run: genvm-lint check contracts/merge_witness.py --json
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/gltest-direct/genvm-universal-v0.2.16.tar.xz
+          key: genvm-direct-v0.2.16-4f0b358e
+      - name: Pin the GenVM bundle used by direct mode
+        run: |
+          bundle="$HOME/.cache/gltest-direct/genvm-universal-v0.2.16.tar.xz"
+          mkdir -p "$(dirname "$bundle")"
+          if [ ! -f "$bundle" ]; then
+            curl --fail --location --retry 3 https://github.com/genlayerlabs/genvm/releases/download/v0.2.16/genvm-universal.tar.xz -o "$bundle"
+          fi
+          echo "4f0b358ec98ec148be9b95cdfb0f0e1a6cbe64da0194fdfac3fffc6f5d1d93e2  $bundle" | sha256sum --check
       - run: python -m pytest -q

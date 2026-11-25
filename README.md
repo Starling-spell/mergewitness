@@ -8,7 +8,8 @@ another commit or another workflow cannot approve a release.
 
 1. Open [MergeWitness](https://mergewitness.vercel.app/) and click **Load example**.
    The app reads the policy and approval from finalized GenLayer state. No wallet
-   is required for lookup.
+   is required for lookup. If the live read fails, the example shows the recorded
+   approval with a clear label and its finalized transaction link.
 2. Confirm **Approved release** refers to `openai/openai-node` PR 3192, its merge
    SHA and CI run 45688945469, attempt 1. Open **Finalized receipt** to inspect
    the verification transaction. The PR and workflow belong to the public
@@ -26,6 +27,12 @@ another commit or another workflow cannot approve a release.
 See [the deployment evidence](deployments/studio.json) for the address,
 source hash, policy and verification transactions. [The example input](deployments/example.json)
 identifies the GitHub PR and exact run attempts.
+
+The [Studio demo run](https://github.com/Starling-spell/mergewitness/actions/runs/45696057354)
+verified deployed source and finalized policy creation, rejection and approval
+receipts. The rejection finalized with `MW_WRONG_WORKFLOW` while the approval
+gate was still closed. The matching attempt then opened the gate for the exact
+merge SHA.
 
 ## Create a policy
 

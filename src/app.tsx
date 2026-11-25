@@ -57,6 +57,7 @@ function App() {
   const [pending, setPending] = useState<Pending | null>(restore);
   const [lastHash, setLastHash] = useState<Hash>();
   const [approval, setApproval] = useState<Approval | null>(null);
+  const [recorded, setRecorded] = useState(false);
   const [policy, setPolicy] = useState<Policy | null>(null);
   const [counts, setCounts] = useState<Counts>();
   const [loadState, setLoadState] = useState('Reading finalized state…');
@@ -75,11 +76,21 @@ function App() {
       if (generation !== readGeneration.current) return;
       setPolicy(metadata);
       setApproval(certificate);
+      setRecorded(false);
       setLoadState(metadata ? certificate ? '' : 'This policy has no finalized approval for that commit.' : 'This policy has not been registered.');
     } catch {
       if (generation !== readGeneration.current) return;
+      const archived = deployment.approval as Approval | undefined;
+      if (archived?.policy.id === id && archived.sha === commit) {
+        setPolicy(archived.policy);
+        setApproval(archived);
+        setRecorded(true);
+        setLoadState('Live Studio lookup unavailable. Showing the recorded approval and its finalized receipt.');
+        return;
+      }
       setPolicy(null);
       setApproval(null);
+      setRecorded(false);
       setLoadState(address ? 'Studio could not return finalized state. Retry the lookup.' : 'The deployment address is pending.');
     } finally {
       if (generation === readGeneration.current) setChecking(false);
@@ -111,6 +122,7 @@ function App() {
     setter(value);
     setPolicy(null);
     setApproval(null);
+    setRecorded(false);
     setChecking(false);
     setLoadState('Look up this commit to check its finalized approval.');
   }
@@ -286,8 +298,9 @@ function App() {
           </div>
         </section>
         <section className="panel approval" aria-labelledby="approval-title">
-          <div className="panel-top"><h2 id="approval-title">Approval record</h2>{approval && <span className="badge">Finalized</span>}</div>
+          <div className="panel-top"><h2 id="approval-title">Approval record</h2>{approval && <span className="badge">{recorded ? 'Recorded receipt' : 'Finalized'}</span>}</div>
           {approval ? <>
+            {recorded && <p className="hint" aria-live="polite">{loadState}</p>}
             <div className="stamp"><span aria-hidden="true">✓</span> Approved release</div>
             <p className="repo">{approval.policy.repo}<span>{approval.policy.branch}</span></p>
             <dl className="facts">
@@ -301,6 +314,7 @@ function App() {
               <button className="button secondary" onClick={() => void copyApproval()}>Copy approval link</button>
               {loadedExample && deployment.approvalTx && <a className="button secondary" href={explorer + '/tx/' + deployment.approvalTx} target="_blank" rel="noreferrer">Finalized receipt ↗</a>}
             </div>
+            {loadedExample && deployment.wrongWorkflowTx && <p className="hint"><a href={explorer + '/tx/' + deployment.wrongWorkflowTx} target="_blank" rel="noreferrer">Wrong-workflow rejection ↗</a></p>}
           </> : <div className="empty">
             <p aria-live="polite">{loadState}</p>
             {policy && <p className="repo">{policy.repo}<span>{policy.branch}</span></p>}

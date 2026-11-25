@@ -4,7 +4,24 @@
   "deployer": "0x21e40137238670fF7d4C0B2631760901553380e6",
   "deploymentTx": "0xa0d72eee7dbb2fc793e00b6789b576f365961f51cc85be149efb63a6a920382f",
   "policyTx": "0x15bbc69076a44745417cb2fea8a946f327950ac776a9604a1c2d912dcd7bf84b",
-  "approvalTx": "",
-  "wrongWorkflowTx": "",
-  "sourceSha256": "ab7817226ec44618aaf27e4cc171bf23689f8d6a931afb5c4afdd434eb2082b7"
+  "sourceSha256": "ab7817226ec44618aaf27e4cc171bf23689f8d6a931afb5c4afdd434eb2082b7",
+  "wrongWorkflowTx": "0xee093d5f0fb9ea28ae6107725ae0ca4cdbb516584e1f780fd51c2e4b1cbe669b",
+  "approvalTx": "0x359eeb784462676cf3cb9ae731600f73f4bc093321debd38229e2594dfa3d97d",
+  "approval": {
+    "attempt": 1,
+    "digest": "65f7ee9f6a279bb9511e9aac4e03bfa11a7cba445cdc3ab46795885ecdb6bcc8",
+    "merged_at": "2026-11-25T19:49:19Z",
+    "policy": {
+      "branch": "main",
+      "id": "openai/openai-node:438419937:main:73866226",
+      "repo": "openai/openai-node",
+      "repository_id": 438419937,
+      "workflow_id": 73866226
+    },
+    "pull": 3192,
+    "run": 45688945469,
+    "run_started_at": "2026-11-25T19:49:21Z",
+    "sha": "be6cf76e14988df37b8c280fdc01184bb2c7d52e"
+  },
+  "checkedAt": "2026-11-25T20:34:57.591Z"
 }
