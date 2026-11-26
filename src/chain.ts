@@ -16,7 +16,6 @@ export type Approval = {
   policy: Policy; sha: string; pull: number; run: number; attempt: number;
   merged_at: string; run_started_at: string; digest: string;
 };
-export type Counts = { policies: number | bigint; approvals: number | bigint };
 export type ContractArgs = (string | number)[];
 
 export const chain = deployment.chainId === 61999 ? studionet : studioDevnet;
@@ -27,10 +26,27 @@ export const address = deployment.address ? getAddress(deployment.address) : und
 export const reader = createClient({ chain });
 export const repository = 'https://github.com/Starling-spell/mergewitness';
 export const delay = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
+export const txPattern = /^0x[0-9a-f]{64}$/i;
+
+export async function withDeadline<T>(request: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      request,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('Studio request timed out')), ms);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 export async function read(functionName: string, args: ContractArgs = []) {
   if (!address) throw new Error('This build has no contract address.');
-  return reader.readContract({ address, functionName, args, transactionHashVariant: TransactionHashVariant.LATEST_FINAL });
+  return withDeadline(reader.readContract({
+    address, functionName, args, transactionHashVariant: TransactionHashVariant.LATEST_FINAL,
+  }), 12000);
 }
 
 export async function jsonView<T>(functionName: string, args: ContractArgs): Promise<T | null> {
@@ -46,7 +62,7 @@ export async function wallet(prompt = true) {
   return { provider, account: getAddress(accounts[0]) };
 }
 
-export async function submit(functionName: string, args: ContractArgs): Promise<Hash> {
+export async function submit(functionName: string, args: ContractArgs, onBroadcast: (hash: Hash) => void): Promise<Hash> {
   if (!address) throw new Error('This build has no contract address.');
   const { provider, account } = await wallet(false);
   const chainId = '0x' + chain.id.toString(16);
@@ -59,10 +75,22 @@ export async function submit(functionName: string, args: ContractArgs): Promise<
         chainId, chainName: network, rpcUrls: [rpc], blockExplorerUrls: [explorer],
         nativeCurrency: { name: 'GEN', symbol: 'GEN', decimals: 18 },
       }] });
+      if (Number(await provider.request({ method: 'eth_chainId' })) !== chain.id) {
+        await provider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId }] });
+      }
     }
   }
   if (Number(await provider.request({ method: 'eth_chainId' })) !== chain.id) throw new Error('WRONG_NETWORK');
-  const client = createClient({ chain, account, provider });
+  const trackedProvider: Provider = {
+    async request(request) {
+      const result = await provider.request(request);
+      // On Studio the wallet's EVM hash is also the GenLayer lookup hash.
+      if (chain.isStudio && request.method === 'eth_sendTransaction' &&
+          typeof result === 'string' && txPattern.test(result)) onBroadcast(result as Hash);
+      return result;
+    },
+  };
+  const client = createClient({ chain, account, provider: trackedProvider });
   const quote = await client.estimateTransactionFees({
     leaderTimeunitsAllocation: 100n, validatorTimeunitsAllocation: 200n,
     rotations: [3n], appealRounds: 0n, totalMessageFees: 0n,
@@ -96,6 +124,16 @@ const reasons: Record<string, string> = {
 export function receiptFailure(data: unknown) {
   const code = JSON.stringify(data)?.match(/MW_[A-Z_]+/)?.[0];
   return code && reasons[code] ? reasons[code] : 'The transaction finalized without a successful contract result.';
+}
+
+type Receipt = Awaited<ReturnType<typeof reader.getTransaction>>;
+
+export function receiptSucceeded(receipt: Receipt) {
+  // Studio responses carry raw fields even when the SDK cannot derive resultName.
+  const studio = receipt as Receipt & { result_name?: string; leader_only?: boolean };
+  return receipt.statusName === 'FINALIZED' &&
+    (studio.result_name ?? receipt.resultName) === 'MAJORITY_AGREE' &&
+    studio.leader_only !== true && receipt.txExecutionResultName === 'FINISHED_WITH_RETURN';
 }
 
 export function walletError(error: unknown) {

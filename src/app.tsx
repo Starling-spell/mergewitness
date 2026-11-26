@@ -4,8 +4,8 @@ import type { Hash } from 'genlayer-js/types';
 import example from '../deployments/example.json';
 import deployment from '../deployments/studio.json';
 import {
-  address, chain, delay, explorer, jsonView, network, read, reader, receiptFailure,
-  repository, submit, wallet, walletError, type Approval, type Counts, type Policy,
+  address, chain, delay, explorer, jsonView, network, reader, receiptFailure, receiptSucceeded,
+  repository, submit, txPattern, wallet, walletError, withDeadline, type Approval, type Policy,
 } from './chain';
 import './style.css';
 
@@ -14,7 +14,6 @@ type Pending = { hash: Hash; policy: string; sha: string; kind: Pane };
 const samplePolicy = [example.repo, example.repositoryId, example.branch, example.workflowId].join(':');
 const storageKey = 'mergewitness:' + chain.id + ':' + address;
 const shaPattern = /^[0-9a-f]{40}$/;
-const txPattern = /^0x[0-9a-f]{64}$/i;
 const positiveId = (value: string) => /^\d+$/.test(value) && Number.isSafeInteger(Number(value)) && Number(value) > 0;
 const short = (value: string, n = 9) => value.slice(0, n) + '…' + value.slice(-5);
 const gh = (repo: string) => 'https://github.com/' + repo;
@@ -37,12 +36,15 @@ function savePending(item: Pending | null) {
 
 function App() {
   const params = new URLSearchParams(window.location.search);
+  const linkedPolicy = params.get('policy') ?? samplePolicy;
+  const linkedSha = params.get('sha') ?? example.sha;
+  const isExample = linkedPolicy === samplePolicy && linkedSha === example.sha;
   const [pane, setPane] = useState<Pane>('verify');
-  const [policyId, setPolicyId] = useState(params.get('policy') ?? samplePolicy);
-  const [sha, setSha] = useState(params.get('sha') ?? example.sha);
-  const [pull, setPull] = useState(String(example.pull));
-  const [run, setRun] = useState(String(example.run));
-  const [attempt, setAttempt] = useState(String(example.attempt));
+  const [policyId, setPolicyId] = useState(linkedPolicy);
+  const [sha, setSha] = useState(linkedSha);
+  const [pull, setPull] = useState(isExample ? String(example.pull) : '');
+  const [run, setRun] = useState(isExample ? String(example.run) : '');
+  const [attempt, setAttempt] = useState(isExample ? String(example.attempt) : '1');
   const [repo, setRepo] = useState('');
   const [repoId, setRepoId] = useState('');
   const [branch, setBranch] = useState('main');
@@ -59,26 +61,27 @@ function App() {
   const [approval, setApproval] = useState<Approval | null>(null);
   const [recorded, setRecorded] = useState(false);
   const [policy, setPolicy] = useState<Policy | null>(null);
-  const [counts, setCounts] = useState<Counts>();
   const [loadState, setLoadState] = useState('Reading finalized state…');
   const operation = useRef(false);
   const readGeneration = useRef(0);
 
-  async function lookup(id: string, commit: string) {
+  async function lookup(id: string, commit: string, fillEvidence = false) {
     const generation = ++readGeneration.current;
     setChecking(true);
     setLoadState('Reading finalized state…');
     try {
-      const [metadata, certificate] = await Promise.all([
-        jsonView<Policy>('get_policy', [id]),
-        jsonView<Approval>('get_approval', [id, commit]),
-      ]);
+      const certificate = await jsonView<Approval>('get_approval', [id, commit]);
+      if (generation !== readGeneration.current) return;
+      const metadata = certificate?.policy ?? await jsonView<Policy>('get_policy', [id]);
       if (generation !== readGeneration.current) return;
       setPolicy(metadata);
       setApproval(certificate);
       setRecorded(false);
+      if (certificate && fillEvidence) {
+        setPull(String(certificate.pull)); setRun(String(certificate.run)); setAttempt(String(certificate.attempt));
+      }
       setLoadState(metadata ? certificate ? '' : 'This policy has no finalized approval for that commit.' : 'This policy has not been registered.');
-    } catch {
+    } catch (error) {
       if (generation !== readGeneration.current) return;
       const archived = deployment.approval as Approval | undefined;
       if (archived?.policy.id === id && archived.sha === commit) {
@@ -91,20 +94,17 @@ function App() {
       setPolicy(null);
       setApproval(null);
       setRecorded(false);
-      setLoadState(address ? 'Studio could not return finalized state. Retry the lookup.' : 'The deployment address is pending.');
+      setLoadState(!address ? 'The deployment address is pending.' :
+        /429|rate limit/i.test(String(error)) ? 'Studio is rate limiting requests. Wait a minute, then retry the lookup.' :
+        'Studio could not return finalized state. Retry the lookup.');
     } finally {
       if (generation === readGeneration.current) setChecking(false);
     }
   }
 
-  function refreshCounts() {
-    if (address) void read('get_counts').then(value => setCounts(value as Counts)).catch(() => {});
-  }
-
   useEffect(() => {
-    if (policyId && shaPattern.test(sha)) void lookup(policyId, sha);
+    if (policyId && policyId.length <= 300 && shaPattern.test(sha)) void lookup(policyId, sha, !isExample);
     else { setLoadState('Enter a policy and full commit SHA.'); setChecking(false); }
-    refreshCounts();
     const refreshAccount = () => { void wallet(false).then(w => setWalletAddress(w.account)).catch(() => setWalletAddress('')); };
     refreshAccount();
     const provider = window.ethereum;
@@ -124,6 +124,7 @@ function App() {
     setApproval(null);
     setRecorded(false);
     setChecking(false);
+    setMessage('');
     setLoadState('Look up this commit to check its finalized approval.');
   }
 
@@ -145,19 +146,24 @@ function App() {
 
   async function track(item: Pending) {
     setLastHash(item.hash);
-    for (let round = 0; round < 60; round++) {
+    const deadline = Date.now() + 270000;
+    while (Date.now() < deadline) {
       let receipt;
-      try { receipt = await reader.getTransaction({ hash: item.hash }); }
+      try { receipt = await withDeadline(reader.getTransaction({ hash: item.hash }), 8000); }
       catch { setPhase('Waiting for the transaction to appear'); }
       if (receipt) {
         setPhase(String(receipt.statusName ?? 'Submitted').replaceAll('_', ' ').toLowerCase());
         if (receipt.statusName === 'FINALIZED' || receipt.statusName === 'CANCELED') {
           savePending(null);
           setPending(null);
-          if (receipt.statusName !== 'FINALIZED' || receipt.resultName !== 'MAJORITY_AGREE' ||
-              receipt.txExecutionResultName !== 'FINISHED_WITH_RETURN') {
-            setError(receiptFailure(receipt.consensus_data?.leader_receipt));
-            setPhase('Finalized without approval');
+          if (!receiptSucceeded(receipt)) {
+            if (receipt.statusName === 'CANCELED') {
+              setError('Studio canceled the transaction.');
+              setPhase('Transaction canceled');
+            } else {
+              setError(receiptFailure(receipt.consensus_data?.leader_receipt));
+              setPhase(item.kind === 'verify' ? 'Finalized without approval' : 'Policy registration failed');
+            }
             return;
           }
           setPolicyId(item.policy);
@@ -170,7 +176,6 @@ function App() {
             setPane('verify');
             if (shaPattern.test(sha)) await lookup(item.policy, sha);
           }
-          refreshCounts();
           return;
         }
       }
@@ -200,14 +205,25 @@ function App() {
     setBusy(true);
     setLastHash(undefined);
     setPhase('Awaiting wallet confirmation');
-    try {
-      const hash = await (pane === 'verify'
-        ? submit('verify_merge', [id, Number(pull), Number(run), Number(attempt), commit])
-        : submit('register_policy', [repo.trim().toLowerCase(), Number(repoId), branch.trim(), Number(workflow)]));
+    let sent: Pending | undefined;
+    const remember = (hash: Hash) => {
+      if (sent?.hash === hash) return;
       const item = { hash, policy: id, sha: commit, kind: pane };
-      savePending(item); setPending(item); setPhase('Submitted');
-      await track(item);
-    } catch (error) { setError(walletError(error)); setPhase(''); }
+      sent = item;
+      savePending(item);
+      setPending(item);
+      setPhase('Submitted');
+    };
+    try {
+      try {
+        remember(await (pane === 'verify'
+          ? submit('verify_merge', [id, Number(pull), Number(run), Number(attempt), commit], remember)
+          : submit('register_policy', [repo.trim().toLowerCase(), Number(repoId), branch.trim(), Number(workflow)], remember)));
+      } catch (error) {
+        if (!sent) { setError(walletError(error)); setPhase(''); return; }
+      }
+      if (sent) await track(sent);
+    }
     finally { setBusy(false); operation.current = false; }
   }
 
@@ -282,8 +298,9 @@ function App() {
               </>}
             </fieldset>
             <div className="actions">
-              <button type="submit" className="button primary" disabled={!address || busy || Boolean(pending) || connecting}>
-                {busy ? 'Transaction in progress' : !walletAddress ? 'Connect wallet' : pane === 'policy' ? 'Register on GenLayer' : 'Verify on GenLayer'}
+              <button type={walletAddress ? 'submit' : 'button'} className="button primary" disabled={!address || busy || Boolean(pending) || connecting}
+                onClick={walletAddress ? undefined : () => void connect()}>
+                {busy ? 'Transaction in progress' : connecting ? 'Connecting…' : !walletAddress ? 'Connect wallet' : pane === 'policy' ? 'Register on GenLayer' : 'Verify on GenLayer'}
               </button>
               {pane === 'verify' && <button type="button" className="button secondary" disabled={checking || busy || !policyId.trim() || !shaPattern.test(sha.trim().toLowerCase())}
                 onClick={() => void lookup(policyId.trim(), sha.trim().toLowerCase())}>Look up approval</button>}
@@ -323,7 +340,7 @@ function App() {
         </section>
       </div>
       <aside className="info" aria-label="Deployment details">
-        <div><strong>Chain {chain.id}</strong><p>{counts ? `${counts.policies} registered · ${counts.approvals} approvals` : network}</p></div>
+        <div><strong>Chain {chain.id}</strong><p>{network}</p></div>
         <div><strong>Authority</strong><p>Public GitHub REST data, independently checked by GenLayer validators.</p></div>
         <div><strong>Contract</strong><p>{address ? <a href={explorer + '/address/' + address} target="_blank" rel="noreferrer">{short(address)} ↗</a> : 'Address pending'}</p></div>
       </aside>

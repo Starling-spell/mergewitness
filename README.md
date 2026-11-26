@@ -102,5 +102,11 @@ submit the remaining permissionless demo steps.
 genvm-lint check contracts/merge_witness.py --json
 ```
 
+Run the browser checks with `npx playwright install chromium` followed by
+`npm run qa:browser`. Use `npm run build` and
+`npm run qa:browser -- --local` for the current build. Adding `--live-wallet`
+uses a fresh faucet-funded Studio wallet to exercise policy registration,
+reloading during a transaction, and both verification outcomes.
+
 The Vercel site is a static Vite app. It sends reads to the public GenLayer RPC
 and wallet-signed writes directly to GenLayer.

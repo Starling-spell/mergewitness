@@ -7,19 +7,22 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "chain": "node scripts/studio.mjs",
-    "approval": "node scripts/require-approval.mjs"
+    "approval": "node scripts/require-approval.mjs",
+    "qa:browser": "node scripts/browser-qa.mjs"
   },
   "dependencies": {
     "genlayer-js": "2.0.0-rc.1",
     "react": "19.1.1",
     "react-dom": "19.1.1",
-    "viem": "2.38.5"
+    "viem": "2.58.6"
   },
   "devDependencies": {
     "@types/react": "19.1.16",
     "@types/react-dom": "19.1.9",
+    "playwright": "1.63.0",
     "typescript": "5.9.3",
-    "vite": "6.4.1"
+    "vite": "6.4.6"
   },
+  "overrides": {"ws": "8.23.0"},
   "engines": {"node": "24.x"}
 }
